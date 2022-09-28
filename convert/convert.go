@@ -1,31 +1,60 @@
-package typ
+package convert
 
 import (
 	"bufio"
 	"context"
+	"encoding/csv"
 	"fmt"
+	"github.com/xuri/excelize/v2"
+	"io"
+	"strconv"
 	"strings"
 )
 
-type Converter interface {
-	Run(context.Context) error
-}
-
-type Convert struct {
-	*Config
+func New(conf *Config) *Convert {
+	return &Convert{
+		Config: conf,
+	}
 }
 
 type Config struct {
 	SourceExt       Ext
 	SourceBufReader *bufio.Reader
 	TargetExt       Ext
+	Output          string
 	PrintProcessing bool
 }
 
-func New(conf *Config) *Convert {
-	return &Convert{
-		conf,
+type Convert struct {
+	*Config
+}
+
+func (cv *Convert) Run(ctx context.Context) error {
+	csvReader := csv.NewReader(cv.SourceBufReader)
+	xlsxWriter := excelize.NewFile()
+	activeIndex := xlsxWriter.NewSheet("sheet1")
+	xlsxWriter.SetActiveSheet(activeIndex)
+	var row int
+	for {
+		record, err := csvReader.Read()
+		if err != nil {
+			if err != io.EOF {
+				return err
+			}
+			break
+		}
+		row++
+		for idx, val := range record {
+			axis := intToXlsxAxis(idx) + strconv.Itoa(row)
+			if err = xlsxWriter.SetCellValue("sheet1", axis, val); err != nil {
+				return err
+			}
+		}
 	}
+	if err := xlsxWriter.SaveAs(cv.Output); err != nil {
+		return err
+	}
+	return nil
 }
 
 type Ext uint8
